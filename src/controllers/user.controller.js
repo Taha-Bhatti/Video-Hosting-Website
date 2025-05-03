@@ -1,11 +1,70 @@
 import { asyncHandler } from "../utils/asyncHandler.js";
-
-const registerUser = asyncHandler(async (req,res) =>{
-    res.status(200).json({
-        message: "taha"
-    })
-})
+import {ApiError} from "../utils/ApiError.js"
+import { User } from "../models/user.model.js";
+import { uploadOnCloudinary } from "../utils/cloudinary.js";
+import { ApiResponse } from "../utils/ApiResponse.js";
 
 
 
-export {registerUser}
+const registerUser = asyncHandler(async (req, res) => {
+  //get user details from frontend
+  //validation check if send details are not empty
+  //check if user exists via username or email
+  //check for images and avatar
+  //upload them to cloudinary
+  //create user obj - create entry in db
+  // remove password and refresh token field from response
+  //check if user created successfully
+  //return response
+
+  //data from  forms  and json can be fetched via req.body other methods for url
+  const { fullName, email, username, password } = req.body;
+  console.log("email: ",email);
+  
+  if ([fullName,email,username,password].some((fields)=> fields?.trim() === "" )) {
+
+    throw new ApiError(400,"All fields are required")
+    
+  }
+
+  const existedUser = User.findOne(  { $or : [{username}, {email}] }  )
+
+  if (existedUser) {
+    throw new ApiError(409,"user with email or username already exists")
+  }
+
+  const avatarLocalPath = req.files?.avatar[0]?.path
+  const coverImageLocalPath = req.files?.coverImage[0]?.path
+
+  if (!avatarLocalPath) {
+    throw new ApiError(400,"avatar is required")
+  }
+  
+  const avatar = await uploadOnCloudinary(avatarLocalPath)
+  const coverImage =  await uploadOnCloudinary(coverImageLocalPath)
+
+  if (!avatar) {
+    throw new ApiError(400,"avatar is required")
+  }
+
+
+  const user = await User.create({
+    fullName,
+    avatar: avatar.url,
+    coverImage: coverImage?.url || "",
+    username: username.toLowerCase()
+  })
+  // .select removes password and refresh token field from response
+ const createdUser = await User.findById(user._id).select( "-password -refreshToken" ) // id automatically created by mongoDB
+if (!createdUser) {
+    throw new ApiError(500,"Something went wrong while registering the user ")
+}
+
+return res.status(201).json( new ApiResponse(200, createdUser, "user registered successfully ") )
+ 
+
+
+  
+});
+
+export { registerUser };
